@@ -1,0 +1,54 @@
+name: Build VIctory
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Release (victory.exe)
+        run: cargo build --release -p victory --locked
+
+      - name: Build Diagnostics (victory-diag.exe)
+        run: cargo build --profile diag -p victory --features diagnostics --locked
+
+      - name: Prepare artifact directory
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item target/release/victory.exe dist/victory.exe
+          Copy-Item target/diag/victory.exe dist/victory-diag.exe
+          if (Test-Path victory.example.toml) {
+            Copy-Item victory.example.toml dist/victory.example.toml
+          }
+
+      - name: Upload compiled binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: victory-windows-x64-${{ github.sha }}
+          path: dist/
+          retention-days: 14
